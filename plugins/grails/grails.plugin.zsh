@@ -1,49 +1,54 @@
-#
-# Grails zsh Plugin based on Ted Naleid's autocomplete script for zsh
-# http://naleid.com/blog/2010/03/02/updated-grails-autocomplete-script-for-zsh/
-#
-_property_value() {
-    grep $1 application.properties | sed -E 's/(.*)=(.*)$/\2/'
-}
+_enumerateGrailsScripts() {
+    # Default directoryies
+    directories=($GRAILS_HOME/scripts ~/.grails/scripts ./scripts)
 
-_grails_version() {
-        _property_value app.grails.version
-}
-
-_grails_project_name() {
-    _property_value app.name
-}
-
-_grails_script_dirs() {
-        local SCRIPT_DIRS="$GRAILS_HOME/scripts ~/.grails/scripts ./scripts"
-        for PLUGIN_DIR in ~/.grails/$(_grails_version)/projects/$(_grails_project_name)/plugins/*/scripts; do
-                SCRIPT_DIRS="$SCRIPT_DIRS $PLUGIN_DIR"
-        done
-        echo $SCRIPT_DIRS
-}
-
-_grails_scripts() {     
-        for D in $(_grails_script_dirs); do
-                if [ -d $D ]
-                        then ls -1 $D/* | grep -e ".groovy$" | sed -E 's/(.*)\/(.*)\.groovy$/\2/' | sed -E 's/([A-Z])/-\1/g' | sed -E 's/^-//' | tr "[:upper:]" "[:lower:]"
-                fi
-        done | sort | uniq | grep -vE "^_"      
-}
-
-_grails_tests() {
-        if [ -d test ] 
-                then ls -1 test/**/*Tests.* | sed -E 's/(test\/[^\/]*\/)(.*)(Tests.*)/\2/' | uniq | tr \/ .
-    fi  
-}
-
-_grails() {
-        if (( CURRENT == 2 )); then
-                scripts=( $(_grails_scripts) )
-                _sep_parts scripts
-    else
-                tests=( $(_grails_tests) )
-        _multi_parts . tests
+    # Check all of the plugins directories, if they exist
+    if [ -d plugins ]
+    then
+        directories+=(plugins/*/scripts)
+    fi
+    
+    # Enumerate all of the Groovy files
+    files=()
+    for dir in $directories;
+    do
+        if [ -d $dir ]
+        then
+            files+=($dir/[^_]*.groovy)
         fi
+    done
+    
+    # Don't try to basename ()
+    if [ ${#files} -eq 0 ];
+    then
+        return
+    fi
+    
+    # - Strip the path
+    # - Remove all scripts with a leading '_'
+    # - PackagePlugin_.groovy -> PackagePlugin
+    # - PackagePlugin         -> Package-Plugin
+    # - Package-Plugin        -> package-plugin
+    basename $files                             \
+        | sed -E  -e 's/^_?([^_]+)_?.groovy/\1/'\
+                  -e 's/([a-z])([A-Z])/\1-\2/g' \
+        | tr "[:upper:]" "[:lower:]"            \
+        | sort                                  \
+        | uniq
 }
-
+ 
+_grails() {
+    if (( CURRENT == 2 )); then
+        scripts=( $(_enumerateGrailsScripts) )
+        
+        if [ ${#scripts} -ne 0 ];
+        then
+            _multi_parts / scripts
+            return
+        fi
+    fi
+    
+    _files
+}
+ 
 compdef _grails grails
